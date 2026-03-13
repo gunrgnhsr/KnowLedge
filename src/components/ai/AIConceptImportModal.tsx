@@ -35,6 +35,25 @@ export function AIConceptImportModal({ isOpen, onClose, topic, onSuccess }: AICo
     const [errorContext, setErrorContext] = useState<{ snippet: string; marker: string } | null>(null);
     const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
 
+    React.useEffect(() => {
+        if (isOpen) {
+            const stored = sessionStorage.getItem("ai_import_concepts");
+            if (stored) {
+                try {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        setConcepts(parsed);
+                        setCurrentIndex(0);
+                        setIsReviewing(true);
+                    }
+                    sessionStorage.removeItem("ai_import_concepts");
+                } catch (err) {
+                    console.error("Failed to parse automated discovery results", err);
+                }
+            }
+        }
+    }, [isOpen]);
+
     const handleParse = () => {
         setError(null);
         setErrorContext(null);

@@ -20,6 +20,8 @@ import { BulkActionBar } from "@/components/ui/BulkActionBar";
 import { BulkTopicEditModal } from "@/components/ui/BulkTopicEditModal";
 import { ExamSettingsModal, ExamSettings } from "@/components/exam/ExamSettingsModal";
 import { useRouter } from "next/navigation";
+import { AIChoiceModal } from "@/components/ai/AIChoiceModal";
+import { generateProblemFromContent, discoverConceptsFromContent } from "@/lib/ai/actions";
 
 export default function KnowledgeBase() {
     const router = useRouter();
@@ -43,6 +45,12 @@ export default function KnowledgeBase() {
         title: "",
         maxCount: 0
     });
+    const [aiModal, setAiModal] = useState<{ open: boolean; type: "concept" | "topic"; data: any }>({
+        open: false,
+        type: "concept",
+        data: null
+    });
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
@@ -133,13 +141,66 @@ export default function KnowledgeBase() {
     const handleDiscoverPrompt = () => {
         const topic = topics.find(t => t.id === selectedTopicId);
         if (!topic) return;
+        setAiModal({ open: true, type: "topic", data: topic });
+    };
 
-        const topicConcepts = concepts.filter(c => c.topicIds.includes(topic.id));
-        const prompt = aiPrompts.discoverConcepts(topic, topicConcepts);
+    const handleAIChoiceInApp = async () => {
+        if (!aiModal.data) return;
+        setIsGeneratingAI(true);
+        try {
+            if (aiModal.type === "concept") {
+                const concept = aiModal.data as Concept;
+                const relatedConcepts = concepts.filter(c =>
+                    c.id !== concept.id &&
+                    c.topicIds.some(tid => concept.topicIds.includes(tid))
+                );
+                const prompt = aiPrompts.generateFromConcept(concept, relatedConcepts);
 
+                const data = await generateProblemFromContent(prompt);
+                const enrichedData = {
+                    ...data,
+                    sourceTopicIds: concept.topicIds,
+                    sourceConceptId: concept.id
+                };
+                sessionStorage.setItem("ai_import_data", JSON.stringify(enrichedData));
+                router.push("/problems/new?import=ai");
+            } else {
+                const topic = aiModal.data as Topic;
+                const topicConcepts = concepts.filter(c => c.topicIds.includes(topic.id));
+                const prompt = aiPrompts.discoverConcepts(topic, topicConcepts);
+
+                const data = await discoverConceptsFromContent(prompt);
+                // For discovery, we might want a different redirect or a specific modal
+                // For now, let's just stick to what the user expects for "problems" if that's the primary use case,
+                // but discovery returns { concepts: [...] }.
+                // If it's discovery, we should probably stay on the page and open the import modal.
+                sessionStorage.setItem("ai_import_concepts", JSON.stringify(data.concepts));
+                setImportModalOpen(true);
+                setAiModal({ ...aiModal, open: false });
+            }
+        } catch (err) {
+            console.error("AI Generation Failed:", err);
+        } finally {
+            setIsGeneratingAI(false);
+        }
+    };
+
+    const handleAIChoiceCopyPrompt = () => {
+        if (!aiModal.data) return;
+        let prompt = "";
+        if (aiModal.type === "concept") {
+            const concept = aiModal.data as Concept;
+            const relatedConcepts = concepts.filter(c =>
+                c.id !== concept.id &&
+                c.topicIds.some(tid => concept.topicIds.includes(tid))
+            );
+            prompt = aiPrompts.generateFromConcept(concept, relatedConcepts);
+        } else {
+            const topic = aiModal.data as Topic;
+            const topicConcepts = concepts.filter(c => c.topicIds.includes(topic.id));
+            prompt = aiPrompts.discoverConcepts(topic, topicConcepts);
+        }
         navigator.clipboard.writeText(prompt);
-        setDiscoveryCopied(true);
-        setTimeout(() => setDiscoveryCopied(null as any), 2000);
     };
 
     return (
@@ -208,22 +269,15 @@ export default function KnowledgeBase() {
                                 size="sm"
                                 className={cn(
                                     "h-8 rounded-full gap-2 transition-all",
-                                    discoveryCopied ? "bg-green-500/10 text-green-600 border-green-500/20" : "bg-primary/5 text-primary border-primary/20 hover:bg-primary/10"
+                                    "bg-primary/5 text-primary border-primary/20 hover:bg-primary/10"
                                 )}
                                 onClick={handleDiscoverPrompt}
                                 title="Generate prompt to discover missing concepts for this topic"
                             >
-                                {discoveryCopied ? (
-                                    <>
-                                        <CheckIcon className="w-3.5 h-3.5" />
-                                        Prompt Copied
-                                    </>
-                                ) : (
-                                    <>
-                                        <Sparkles className="w-3.5 h-3.5" />
-                                        Discover New
-                                    </>
-                                )}
+                                <>
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    Discover New
+                                </>
                             </Button>
                         </div>
                     )}
@@ -334,23 +388,17 @@ export default function KnowledgeBase() {
                                                 size="icon"
                                                 className={cn(
                                                     "h-8 w-8 transition-all",
-                                                    copiedId === concept.id ? "text-green-500 bg-green-500/10" : "text-muted-foreground hover:text-primary"
+                                                    "text-muted-foreground hover:text-primary"
                                                 )}
                                                 onClick={(e) => {
-                                                    e.preventDefault();
-                                                    const relatedConcepts = concepts.filter(c =>
-                                                        c.id !== concept.id &&
-                                                        c.topicIds.some(tid => concept.topicIds.includes(tid))
-                                                    );
-                                                    const prompt = aiPrompts.generateFromConcept(concept, relatedConcepts);
-                                                    navigator.clipboard.writeText(prompt);
-                                                    setCopiedId(concept.id);
-                                                    setTimeout(() => setCopiedId(null), 2000);
-                                                }}
-                                                title="Generate AI Prompt for Problems"
-                                            >
-                                                {copiedId === concept.id ? <CheckIcon className="w-4 h-4" /> : <Wand2 className="w-4 h-4" />}
-                                            </Button>
+                                                     e.preventDefault();
+                                                     e.stopPropagation();
+                                                     setAiModal({ open: true, type: "concept", data: concept });
+                                                 }}
+                                                 title="AI Problem Assistant"
+                                             >
+                                                 <Wand2 className="w-4 h-4" />
+                                             </Button>
                                             <Link href={`/knowledge/edit/${concept.id}`}>
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary">
                                                     <Pencil className="w-4 h-4" />
@@ -408,6 +456,16 @@ export default function KnowledgeBase() {
                 isLoading={isDeleting}
                 title="Delete Concept"
                 description="Are you sure you want to delete this concept? This action cannot be undone and the concept will be permanently removed from your knowledge base."
+            />
+
+            <AIChoiceModal
+                isOpen={aiModal.open}
+                onClose={() => setAiModal({ ...aiModal, open: false })}
+                title={aiModal.type === "concept" ? `Generate from "${aiModal.data?.title}"` : `Explore "${aiModal.data?.name}"`}
+                description={aiModal.type === "concept" ? "Create a study problem based on this concept's definition." : "Discover missing concepts or create problems for this topic."}
+                onGenerateInApp={handleAIChoiceInApp}
+                onCopyPrompt={handleAIChoiceCopyPrompt}
+                isGenerating={isGeneratingAI}
             />
 
             <AIConceptImportModal

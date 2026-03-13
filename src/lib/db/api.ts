@@ -259,9 +259,14 @@ export const api = {
 
             const item = itemRes.data as StudyItem;
 
+            // Map UI Difficulty Levels (3=Easy, 5=Hard) to Algorithm Performance Grades (3=Hard, 5=Easy)
+            let performanceGrade = grade;
+            if (grade === 3) performanceGrade = 5; // Level 3 (Easy difficulty) -> Grade 5 (Perfect Performance)
+            else if (grade === 5) performanceGrade = 3; // Level 5 (Hard difficulty) -> Grade 3 (Mediocre Pass)
+
             let newInterval = item.interval;
             let newRepetitions = item.repetitions;
-            let newEaseFactor = item.easeFactor + (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02));
+            let newEaseFactor = item.easeFactor + (0.1 - (5 - performanceGrade) * (0.08 + (5 - performanceGrade) * 0.02));
 
             if (newEaseFactor < 1.3) newEaseFactor = 1.3;
 

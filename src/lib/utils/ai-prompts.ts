@@ -1,22 +1,20 @@
 import { Concept, Problem, Topic } from "../db/models";
 
-const BASE_INSTRUCTIONS = `
+export const BASE_INSTRUCTIONS = `
 Act as a university professor and subject matter expert. 
 Your task is to generate a high-quality practice problem based on the context provided.
 Follow these rules strictly:
-7. LaTeX MATH: Use LaTeX for ALL math. 
-   - CRITICAL: JSON requires DOUBLE-ESCAPED backslashes. 
-   - Every single "\\" in LaTeX MUST be written as "\\\\" in the JSON string.
-   - Example: "$\\frac{1}{2}$" must be written as "$\\\\frac{1}{2}$".
-   - Example: "\\begin{tikzpicture}" must be written as "\\\\begin{tikzpicture}".
-8. NEW LINES: Use actual line breaks (Enter) inside the string values. Do NOT use literal \n character sequences.
-9. CONCEPT HINTS ONLY:
-   - You will be provided with a list of "Existing Concepts" (Title and Content/Formula).
-   - Use ONLY these concepts (or suggested new ones) as hints.
-   - If a concept is relevant, include its ID in "existingConceptIds".
+1. LaTeX MATH: Use LaTeX for ALL math. 
+   - Every single "\\" in LaTeX MUST be written as "\\\\" (double backslash) in the JSON strings for valid escaping.
+   - Example: "$\\\\frac{1}{2}$" (represents $\frac{1}{2}$).
+2. NEW LINES: Use "\\n" (backslash and n) for all line breaks within JSON string values. 
+   - Do NOT use actual literal multi-line line breaks in the JSON output, as this makes it invalid JSON.
+3. CONCEPT HINTS:
+   - Use provided "Existing Concepts" (Title and Content/Formula) as much as possible.
+   - Link them by ID in "existingConceptIds" if they are critical to the solution.
    - If you need a concept that is NOT in the list, provide its "title" and "content" in "newConcepts".
-10. DIAGRAMS: Use TikZ for diagrams. Surround with standard \\begin{tikzpicture} and \\end{tikzpicture} tags.
-11. Output ONLY a single valid JSON object. No other text. Any conversational text will break the parser.
+4. DIAGRAMS: Use TikZ for diagrams. Surround with standard \\\\begin{tikzpicture} and \\\\end{tikzpicture} tags.
+5. Output ONLY a single valid JSON object.
 
 Expected JSON format:
 {
@@ -24,7 +22,7 @@ Expected JSON format:
   "solution": "Step-by-step solution...",
   "existingConceptIds": ["id1", "id2"],
   "newConcepts": [
-     { "title": "Concise Name", "content": "Formula or short explanation..." }
+    { "title": "Name", "content": "Explanation..." }
   ]
 }
 `;
@@ -108,6 +106,7 @@ TASK:
 
 FORMATTING RULES:
 - LaTeX MATH: Use LaTeX for ALL math. Use double-escaped backslashes for JSON (e.g., "$\\\\frac{1}{2}$").
+- NEW LINES: Use "\\n" for all line breaks within your JSON string values. NEVER use literal multi-line strings.
 - TikZ DIAGRAMS: If a concept benefit from a visual, include a TikZ block using standard \\\\begin{tikzpicture} and \\\\end{tikzpicture} tags.
 - NO CITATIONS: Do NOT include page numbers, source names, or "From the text..." mentions. Just provide the raw educational content.
 - RICH TEXT: Use **bold** for key terms. Use bullet points for lists.
@@ -123,6 +122,17 @@ Return ONLY a valid JSON object:
 
 SOURCE DATA:
 [Analyze the attached files OR the pasted text below]
+`;
+  },
+
+  generateFromRawContent: (content: string) => {
+    return `
+${BASE_INSTRUCTIONS}
+
+TASK: Based on the content below, generate a high-quality study problem.
+
+CONTENT:
+${content}
 `;
   }
 };

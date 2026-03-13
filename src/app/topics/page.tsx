@@ -31,6 +31,8 @@ import { aiPrompts } from "@/lib/utils/ai-prompts";
 import { AdaptPromptModal } from "@/components/ai/AdaptPromptModal";
 import { ConceptPopup } from "@/components/knowledge/ConceptPopup";
 import { ExamSettingsModal, ExamSettings } from "@/components/exam/ExamSettingsModal";
+import { AIChoiceModal } from "@/components/ai/AIChoiceModal";
+import { generateProblemFromContent } from "@/lib/ai/actions";
 
 export default function TopicsPage() {
     const router = useRouter();
@@ -67,6 +69,12 @@ export default function TopicsPage() {
         topic: null,
         maxCount: 0
     });
+    const [aiModal, setAiModal] = useState<{ open: boolean; type: "topic"; data: Topic | null }>({
+        open: false,
+        type: "topic",
+        data: null
+    });
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
     const loadData = async () => {
         setLoading(true);
@@ -134,12 +142,38 @@ export default function TopicsPage() {
 
 
 
-    const handleCopyTopicPrompt = (topic: Topic) => {
+    const handleTopicAI = (topic: Topic) => {
+        setAiModal({ open: true, type: "topic", data: topic });
+    };
+
+    const handleAIChoiceInApp = async () => {
+        if (!aiModal.data) return;
+        setIsGeneratingAI(true);
+        try {
+            const topic = aiModal.data;
+            const topicConcepts = concepts.filter(c => c.topicIds.includes(topic.id));
+            const prompt = aiPrompts.generateFromTopic(topic, topicConcepts);
+
+            const data = await generateProblemFromContent(prompt);
+            const enrichedData = {
+                ...data,
+                sourceTopicIds: [topic.id],
+            };
+            sessionStorage.setItem("ai_import_data", JSON.stringify(enrichedData));
+            router.push("/problems/new?import=ai");
+        } catch (err) {
+            console.error("AI Generation Failed:", err);
+        } finally {
+            setIsGeneratingAI(false);
+        }
+    };
+
+    const handleAIChoiceCopyPrompt = () => {
+        if (!aiModal.data) return;
+        const topic = aiModal.data;
         const topicConcepts = concepts.filter(c => c.topicIds.includes(topic.id));
         const prompt = aiPrompts.generateFromTopic(topic, topicConcepts);
         navigator.clipboard.writeText(prompt);
-        setCopiedTopicId(topic.id);
-        setTimeout(() => setCopiedTopicId(null), 2000);
     };
 
     const handleDeleteConfirm = async () => {
@@ -216,14 +250,11 @@ export default function TopicsPage() {
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className={cn(
-                                            "h-7 w-7 rounded-full transition-all",
-                                            copiedTopicId === topic.id ? "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" : "hover:bg-primary/10 text-primary"
-                                        )}
-                                        onClick={() => handleCopyTopicPrompt(topic)}
-                                        title="AI Prompt for Topic"
+                                        className="h-7 w-7 rounded-full hover:bg-primary/10 text-primary"
+                                        onClick={() => handleTopicAI(topic)}
+                                        title="AI Problem Assistant"
                                     >
-                                        {copiedTopicId === topic.id ? <Check className="w-3.5 h-3.5" /> : <Wand2 className="w-3.5 h-3.5" />}
+                                        <Wand2 className="w-3.5 h-3.5" />
                                     </Button>
                                     <Button
                                         variant="ghost"
@@ -353,6 +384,15 @@ export default function TopicsPage() {
                 title={`Focused Exam: ${examModal.topic?.name}`}
                 description={`Master this topic with questions covering all concepts. (${examModal.maxCount} available)`}
                 maxCount={examModal.maxCount}
+            />
+            <AIChoiceModal
+                isOpen={aiModal.open}
+                onClose={() => setAiModal({ ...aiModal, open: false })}
+                title={`Generate from "${aiModal.data?.name}"`}
+                description="Create study problems using all concepts in this topic."
+                onGenerateInApp={handleAIChoiceInApp}
+                onCopyPrompt={handleAIChoiceCopyPrompt}
+                isGenerating={isGeneratingAI}
             />
         </div>
     );

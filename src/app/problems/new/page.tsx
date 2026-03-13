@@ -6,10 +6,23 @@ import { api } from "@/lib/db/api";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { MarkdownEditor } from "@/components/editor/RichTextEditor";
-import { ArrowLeft, Tags } from "lucide-react";
+import { Pencil, ArrowLeft, Tags } from "lucide-react";
 import Link from "next/link";
 import { TopicSelector } from "@/components/topics/TopicSelector";
 import { HintSelector } from "@/components/topics/HintSelector";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { AIImportModal } from "@/components/ai/AIImportModal";
+import { AIGenerator } from "@/components/ai/AIGenerator";
+import { Sparkles, Brain, Check as CheckIcon } from "lucide-react";
 
 export default function NewProblem() {
     return (
@@ -26,10 +39,17 @@ function NewProblemContent() {
     const [topicIds, setTopicIds] = useState<string[]>([]);
     const [hints, setHints] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+    const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
+
+    useEffect(() => {
+        // No pre-fill needed for unified in-app flow
+    }, []);
 
     // AI Suggestions State
     const [aiExistingIds, setAiExistingIds] = useState<string[]>([]);
     const [aiNewConcepts, setAiNewConcepts] = useState<{ title: string; content: string }[]>([]);
+    const [editingNewConcept, setEditingNewConcept] = useState<{ index: number; title: string; content: string } | null>(null);
     const [existingConceptData, setExistingConceptData] = useState<Record<string, string>>({});
 
     const searchParams = useSearchParams();
@@ -43,11 +63,26 @@ function NewProblemContent() {
                     const parsed = JSON.parse(storedData);
                     if (parsed.question) setQuestion(parsed.question);
                     if (parsed.solution) setSolution(parsed.solution);
-                    if (parsed.existingConceptIds) setAiExistingIds(parsed.existingConceptIds);
+                    
+                    if (parsed.existingConceptIds) {
+                        let suggestions = parsed.existingConceptIds;
+                        if (parsed.sourceConceptId) {
+                            suggestions = suggestions.filter((id: string) => id !== parsed.sourceConceptId);
+                        }
+                        setAiExistingIds(suggestions);
+                    }
                     if (parsed.newConcepts) setAiNewConcepts(parsed.newConcepts);
+                    
+                    // Auto-select topic if provided
+                    if (parsed.sourceTopicIds && Array.isArray(parsed.sourceTopicIds)) {
+                        setTopicIds(prev => [...new Set([...prev, ...parsed.sourceTopicIds])]);
+                    }
+                    
+                    // Auto-add source concept as hint if provided
+                    if (parsed.sourceConceptId) {
+                        setHints(prev => [...new Set([...prev, parsed.sourceConceptId])]);
+                    }
 
-                    // Note: we don't clear it yet because we might need it if the user refreshes
-                    // or we can clear it and rely on state
                     sessionStorage.removeItem("ai_import_data");
                 } catch (err) {
                     console.error("Failed to parse AI import data", err);
@@ -64,10 +99,8 @@ function NewProblemContent() {
                 const newData: Record<string, string> = { ...existingConceptData };
                 for (const id of aiExistingIds) {
                     if (!newData[id]) {
-                        const item = await api.items.getById(id);
-                        if (item && item.type === "concept") {
-                            newData[id] = item.title;
-                        }
+                        const concept = await api.concepts.getById(id);
+                        if (concept) newData[id] = concept.title;
                     }
                 }
                 setExistingConceptData(newData);
@@ -78,6 +111,7 @@ function NewProblemContent() {
         fetchConceptNames();
     }, [aiExistingIds]);
 
+
     const handleApplyExistingConcept = (id: string) => {
         if (!hints.includes(id)) {
             setHints([...hints, id]);
@@ -85,17 +119,40 @@ function NewProblemContent() {
         setAiExistingIds(prev => prev.filter(i => i !== id));
     };
 
-    const handleCreateNewConcept = async (concept: { title: string; content: string }) => {
+    const handleCreateNewConcept = async (concept: { title: string; content: string }, index?: number) => {
         try {
             const newConcept = await api.items.createConcept({
                 title: concept.title,
                 content: concept.content || `Concept created from AI suggestion for problem: ${question.substring(0, 50)}...`,
                 topicIds: topicIds
             });
-            setHints([...hints, newConcept.id]);
-            setAiNewConcepts(prev => prev.filter(c => c.title !== concept.title));
+            setHints(prev => [...new Set([...prev, newConcept.id])]);
+            if (index !== undefined) {
+                setAiNewConcepts(prev => prev.filter((_, i) => i !== index));
+            } else {
+                setAiNewConcepts(prev => prev.filter(c => c.title !== concept.title));
+            }
         } catch (err) {
             console.error("Failed to create concept", err);
+        }
+    };
+
+    const handleUpdateSuggestedConcept = () => {
+        if (!editingNewConcept) return;
+        const newConcepts = [...aiNewConcepts];
+        newConcepts[editingNewConcept.index] = {
+            title: editingNewConcept.title,
+            content: editingNewConcept.content
+        };
+        setAiNewConcepts(newConcepts);
+        setEditingNewConcept(null);
+    };
+
+    const handleAIGenerated = (data: { question: string; solution: string; newConcepts?: { title: string; content: string }[] }) => {
+        setQuestion(data.question);
+        setSolution(data.solution);
+        if (data.newConcepts) {
+            setAiNewConcepts(data.newConcepts);
         }
     };
 
@@ -111,7 +168,12 @@ function NewProblemContent() {
                 topicIds,
                 hints,
             });
-            router.push("/problems");
+            const returnTo = searchParams.get("returnTo");
+            if (returnTo) {
+                router.push(returnTo);
+            } else {
+                router.push("/problems");
+            }
         } catch (err) {
             console.error(err);
             setIsSubmitting(false);
@@ -127,7 +189,33 @@ function NewProblemContent() {
                     </Button>
                 </Link>
                 <h1 className="text-3xl font-bold tracking-tight">New Problem</h1>
+                <div className="ml-auto flex gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsAIModalOpen(true)}
+                        className="gap-2 border-primary/20 hover:bg-primary/5"
+                    >
+                        <Sparkles className="w-4 h-4 text-primary" />
+                        Import JSON
+                    </Button>
+                    <Button
+                        type="button"
+                        onClick={() => setIsAIGeneratorOpen(true)}
+                        className="gap-2 bg-primary/10 text-primary hover:bg-primary/20 border-none shadow-none"
+                    >
+                        <Brain className="w-4 h-4 text-primary" />
+                        Generate with Gemini
+                    </Button>
+                </div>
             </div>
+
+            <AIImportModal isOpen={isAIModalOpen} onClose={() => setIsAIModalOpen(false)} />
+            <AIGenerator
+                isOpen={isAIGeneratorOpen}
+                onClose={() => setIsAIGeneratorOpen(false)}
+                onGenerated={handleAIGenerated}
+            />
 
             {(aiExistingIds.length > 0 || aiNewConcepts.length > 0) && (
                 <div className="p-6 rounded-2xl bg-primary/5 border border-primary/10 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
@@ -168,22 +256,30 @@ function NewProblemContent() {
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold text-muted-foreground">New Concepts to Create</Label>
                                 <div className="flex flex-wrap gap-2">
-                                    {aiNewConcepts.map(c => (
-                                        <div key={c.title} className="flex flex-col gap-2 bg-background border border-border rounded-lg p-3 group transition-all hover:border-primary/30 min-w-[240px]">
+                                    {aiNewConcepts.map((c, index) => (
+                                        <div key={index} className="flex flex-col gap-2 bg-background border border-border rounded-lg p-3 group transition-all hover:border-primary/30 min-w-[240px]">
                                             <div className="flex items-center justify-between gap-4">
                                                 <span className="text-sm font-bold italic">"{c.title}"</span>
                                                 <div className="flex gap-1">
                                                     <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 px-2 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                                        onClick={() => setEditingNewConcept({ index, title: c.title, content: c.content })}
+                                                    >
+                                                        <Pencil className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                    <Button
                                                         variant="outline"
                                                         size="sm"
                                                         className="h-7 px-2 border-primary/20 text-primary hover:bg-primary/10"
-                                                        onClick={() => handleCreateNewConcept(c)}
+                                                        onClick={() => handleCreateNewConcept(c, index)}
                                                     >
                                                         Create & Link
                                                     </Button>
                                                     <button
                                                         className="h-7 px-2 text-muted-foreground hover:text-destructive transition-colors"
-                                                        onClick={() => setAiNewConcepts(prev => prev.filter(nc => nc.title !== c.title))}
+                                                        onClick={() => setAiNewConcepts(prev => prev.filter((_, i) => i !== index))}
                                                     >
                                                         ✕
                                                     </button>
@@ -200,6 +296,57 @@ function NewProblemContent() {
                     </div>
                 </div>
             )}
+
+            <Dialog open={!!editingNewConcept} onOpenChange={() => setEditingNewConcept(null)}>
+                <DialogContent className="max-w-2xl rounded-3xl border border-primary/10 shadow-2xl">
+                    <DialogHeader className="space-y-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-xl bg-primary text-primary-foreground">
+                                <Pencil className="w-5 h-5" />
+                            </div>
+                            <DialogTitle className="text-2xl font-black tracking-tight">Edit Suggested Concept</DialogTitle>
+                        </div>
+                        <DialogDescription className="text-base text-muted-foreground font-medium">
+                            Refine the AI suggestion before creating it as a permanent concept.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="py-6 space-y-6">
+                        <div className="space-y-3">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 px-2 text-primary">Concept Title</Label>
+                            <Input
+                                value={editingNewConcept?.title || ""}
+                                onChange={(e) => setEditingNewConcept(prev => prev ? { ...prev, title: e.target.value } : null)}
+                                className="font-bold text-lg bg-muted/20 border-primary/5 h-12 rounded-xl focus-visible:ring-primary/20"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 px-2 text-primary">Content (Markdown/LaTeX)</Label>
+                            <div className="h-[300px] border border-primary/5 rounded-2xl overflow-hidden shadow-inner">
+                                <MarkdownEditor
+                                    content={editingNewConcept?.content || ""}
+                                    onChange={(val) => setEditingNewConcept(prev => prev ? { ...prev, content: val } : null)}
+                                    placeholder="Define the concept using LaTeX ($\dots$)..."
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-3">
+                        <Button variant="ghost" onClick={() => setEditingNewConcept(null)} className="rounded-xl px-6">
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleUpdateSuggestedConcept}
+                            className="rounded-xl px-8 gap-3 bg-primary hover:bg-primary/95 text-primary-foreground font-bold"
+                        >
+                            Update Suggestion
+                            <CheckIcon className="w-4 h-4" />
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <form onSubmit={handleSubmit} className="space-y-12">
                 <div className="space-y-3">

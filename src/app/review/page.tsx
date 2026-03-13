@@ -12,6 +12,18 @@ import { ArrowLeft, Check, X, HelpCircle, Brain, Lightbulb, BookOpen, Zap, PlusC
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { ConceptPopup } from "@/components/knowledge/ConceptPopup";
 import { cn } from "@/lib/utils";
+import { AIChoiceModal } from "@/components/ai/AIChoiceModal";
+import { generateProblemFromContent } from "@/lib/ai/actions";
+import { aiPrompts } from "@/lib/utils/ai-prompts";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Sparkles, Check as CheckIcon } from "lucide-react";
 
 export default function ReviewSession() {
     const router = useRouter();
@@ -26,39 +38,105 @@ export default function ReviewSession() {
     const [practiceUI, setPracticeUI] = useState<'none' | 'selecting' | 'solving'>('none');
     const [showPracticeAnswer, setShowPracticeAnswer] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [aiModal, setAiModal] = useState<{ open: boolean; data: Concept | null }>({ open: false, data: null });
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
     useEffect(() => {
         async function initSession() {
-            const [due, allTopics, allItems] = await Promise.all([
-                api.items.getDueItems(),
+            // Try to restore session first
+            const savedSession = sessionStorage.getItem("review_session");
+            const [allTopics, allItems] = await Promise.all([
                 api.topics.list(),
                 api.items.list()
             ]);
-            setQueue(due.filter((i): i is Concept => i.type === "concept"));
             setTopics(allTopics);
             const problems = allItems.filter((i): i is Problem => i.type === "problem");
             setAllProblems(problems);
+
+            if (savedSession) {
+                try {
+                    const parsed = JSON.parse(savedSession);
+                    setQueue(parsed.queue);
+                    setCurrentIndex(parsed.currentIndex);
+                    sessionStorage.removeItem("review_session");
+                    setLoading(false);
+                    return;
+                } catch (e) {
+                    console.error("Failed to restore session", e);
+                }
+            }
+
+            const due = await api.items.getDueItems();
+            setQueue(due.filter((i): i is Concept => i.type === "concept"));
             setLoading(false);
         }
         initSession();
     }, []);
+
+    // Unified AI Flow: Generate first, then redirect
+    const handleAIChoiceInApp = async () => {
+        if (!aiModal.data || !currentItem) return;
+        setIsGeneratingAI(true);
+        try {
+            const concept = aiModal.data;
+            const relatedConcepts = allProblems.filter(p => p.hints.includes(concept.id)); // Using allProblems to find related if needed, or just filter from all items if available
+            // Note: Review session might not have all concepts loaded, but we have concepts in allProblems context or we can fetch.
+            // For now, let's use what we have.
+            const prompt = aiPrompts.generateFromConcept(concept, []);
+
+            const data = await generateProblemFromContent(prompt);
+            const enrichedData = {
+                ...data,
+                sourceTopicIds: concept.topicIds,
+                sourceConceptId: concept.id
+            };
+            
+            // Save review session to resume later
+            sessionStorage.setItem("review_session", JSON.stringify({
+                queue,
+                currentIndex
+            }));
+
+            sessionStorage.setItem("ai_import_data", JSON.stringify(enrichedData));
+            router.push("/problems/new?import=ai&returnTo=/review");
+        } catch (err) {
+            console.error("AI Generation Failed:", err);
+        } finally {
+            setIsGeneratingAI(false);
+            setAiModal({ open: false, data: null });
+        }
+    };
+
+    const handleAIChoiceCopyPrompt = () => {
+        if (!aiModal.data) return;
+        const concept = aiModal.data;
+        const prompt = aiPrompts.generateFromConcept(concept, []);
+        navigator.clipboard.writeText(prompt);
+    };
 
     // Helper for easier access to current concept
     const currentItem = (queue && queue.length > 0 && currentIndex < queue.length)
         ? queue[currentIndex]
         : null;
 
-    const handleGrade = async (grade: ReviewGrade) => {
-        if (!currentItem) return;
+    const handleGrade = async (grade: ReviewGrade, isPracticeProblem = false) => {
+        const itemToGrade = isPracticeProblem ? practiceProblem : currentItem;
+        if (!itemToGrade) return;
 
-        await api.items.reviewItem(currentItem.id, grade);
+        await api.items.reviewItem(itemToGrade.id, grade);
 
-        resetReviewState();
-
-        if (currentIndex < queue.length - 1) {
-            setCurrentIndex(prev => prev + 1);
+        if (isPracticeProblem) {
+            // After grading practice, return to concept
+            setPracticeUI('none');
+            setPracticeProblem(null);
+            setShowPracticeAnswer(false);
         } else {
-            router.push("/dashboard");
+            resetReviewState();
+            if (currentIndex < queue.length - 1) {
+                setCurrentIndex(prev => prev + 1);
+            } else {
+                router.push("/dashboard");
+            }
         }
     };
 
@@ -94,8 +172,8 @@ export default function ReviewSession() {
         }
 
         if (eligible.length === 0) {
-            // No matching problems
-            alert(`No ${type === 'new' ? 'new' : 'matching'} problems found for this concept.`);
+            // No matching problems found
+            setAiModal({ open: true, data: currentItem as Concept });
             return;
         }
 
@@ -282,7 +360,7 @@ export default function ReviewSession() {
                                             >
                                                 <span className="text-[10px] font-black text-primary">LVL {level}</span>
                                                 <span className="text-[8px] font-bold text-muted-foreground uppercase">
-                                                    {level === 3 ? 'Hard' : level === 4 ? 'Good' : 'Easy'}
+                                                    {level === 3 ? 'Easy' : level === 4 ? 'Good' : 'Hard'}
                                                 </span>
                                             </Button>
                                         ))}
@@ -347,19 +425,40 @@ export default function ReviewSession() {
                                 Reveal Solution
                             </Button>
                         ) : (
-                            <Button
-                                size="lg"
-                                variant="outline"
-                                className="w-full max-w-sm rounded-full h-14 text-lg shadow-md border-2"
-                                onClick={() => {
-                                    setPracticeUI('none');
-                                    setPracticeProblem(null);
-                                    setShowPracticeAnswer(false);
-                                }}
-                            >
-                                <ArrowLeft className="w-5 h-5 mr-2" />
-                                Return to Concept
-                            </Button>
+                                <div className="grid grid-cols-4 gap-2 w-full animate-in zoom-in-95">
+                                    <Button
+                                        variant="destructive"
+                                        className="h-16 flex flex-col gap-1 rounded-xl"
+                                        onClick={() => handleGrade(1, true)}
+                                    >
+                                        <X className="w-4 h-4" />
+                                        <span className="text-[10px] font-black uppercase">Again</span>
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="h-16 flex flex-col gap-1 bg-orange-500/10 text-orange-600 border-orange-500/20 rounded-xl hover:bg-orange-500/20 hover:text-orange-700 transition-all font-bold"
+                                        onClick={() => handleGrade(5, true)}
+                                    >
+                                        <span className="text-[10px] uppercase font-black">Level 5</span>
+                                        <span className="text-xs uppercase">Hard</span>
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="h-16 flex flex-col gap-1 bg-green-500/10 text-green-600 border-green-500/20 rounded-xl hover:bg-green-500/20 hover:text-green-700 dark:text-green-400 font-bold"
+                                        onClick={() => handleGrade(4, true)}
+                                    >
+                                        <span className="text-[10px] uppercase font-black">Level 4</span>
+                                        <span className="text-xs uppercase">Good</span>
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="h-16 flex flex-col gap-1 bg-blue-500/10 text-blue-600 border-blue-500/20 rounded-xl hover:bg-blue-500/20 hover:text-blue-700 dark:text-blue-400 font-bold"
+                                        onClick={() => handleGrade(3, true)}
+                                    >
+                                        <span className="text-[10px] uppercase font-black">Level 3</span>
+                                        <span className="text-xs uppercase">Easy</span>
+                                    </Button>
+                                </div>
                         )
                     ) : !showAnswer ? (
                         <Button
@@ -410,6 +509,16 @@ export default function ReviewSession() {
             <ConceptPopup
                 concept={activeConcept}
                 onClose={() => setActiveConcept(null)}
+            />
+
+            <AIChoiceModal
+                isOpen={aiModal.open}
+                onClose={() => setAiModal({ open: false, data: null })}
+                title={`Generate Problem for ${aiModal.data?.title}`}
+                description="Gemini 3.1 will create a professional study problem based on this concept's content."
+                onGenerateInApp={handleAIChoiceInApp}
+                onCopyPrompt={handleAIChoiceCopyPrompt}
+                isGenerating={isGeneratingAI}
             />
         </div>
     );

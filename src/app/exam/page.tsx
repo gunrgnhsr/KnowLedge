@@ -330,27 +330,27 @@ function ExamContent() {
                                 </Button>
                                 <Button
                                     variant="outline"
-                                    className="h-16 flex flex-col gap-1 rounded-2xl border-2 hover:bg-orange-500/10 hover:border-orange-500/30 hover:text-orange-600 transition-all"
-                                    onClick={() => handleGrade(3)}
+                                    className="h-16 flex flex-col gap-1 rounded-2xl border-2 hover:bg-orange-500/10 hover:border-orange-500/30 hover:text-orange-600 transition-all shadow-sm"
+                                    onClick={() => handleGrade(5)}
                                 >
-                                    <span className="font-black text-xs">HARD</span>
-                                    <span className="text-[8px] font-bold opacity-60">STILL LEARNING</span>
+                                    <span className="font-black text-xs uppercase">Level 5</span>
+                                    <span className="text-[8px] font-bold opacity-60 uppercase">Hard</span>
                                 </Button>
                                 <Button
                                     variant="outline"
                                     className="h-16 flex flex-col gap-1 rounded-2xl border-2 bg-green-500/5 text-green-600 border-green-500/20 hover:bg-green-500/10 hover:border-green-500/40 transition-all shadow-sm"
                                     onClick={() => handleGrade(4)}
                                 >
-                                    <span className="font-black text-xs uppercase">Good</span>
-                                    <span className="text-[8px] font-bold opacity-60">MASTERED</span>
+                                    <span className="font-black text-xs uppercase">Level 4</span>
+                                    <span className="text-[8px] font-bold opacity-60 uppercase">Good</span>
                                 </Button>
                                 <Button
                                     variant="outline"
                                     className="h-16 flex flex-col gap-1 rounded-2xl border-2 bg-blue-500/5 text-blue-600 border-blue-500/20 hover:bg-blue-500/10 hover:border-blue-500/40 transition-all shadow-sm"
-                                    onClick={() => handleGrade(5)}
+                                    onClick={() => handleGrade(3)}
                                 >
-                                    <span className="font-black text-xs uppercase text-blue-700">Perfect</span>
-                                    <span className="text-[8px] font-bold opacity-60 uppercase">Too Easy</span>
+                                    <span className="font-black text-xs uppercase text-blue-700">Level 3</span>
+                                    <span className="text-[8px] font-bold opacity-60 uppercase">Easy</span>
                                 </Button>
                             </div>
                         )}
