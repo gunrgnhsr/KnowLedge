@@ -414,6 +414,7 @@ export default function TopicsPage() {
                 onClose={() => setIsAIGeneratorOpen(false)}
                 onGenerated={handleAIGenerated}
                 initialContent={aiModal.data ? `Topic: ${aiModal.data.name}` : ""}
+                relatedConcepts={aiModal.data ? concepts.filter(c => c.topicIds.includes(aiModal.data!.id)) : []}
             />
         </div>
     );

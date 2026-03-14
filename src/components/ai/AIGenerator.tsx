@@ -15,15 +15,17 @@ import { Brain, Sparkles, AlertCircle, Upload, X } from "lucide-react";
 import { generateProblemFromContent } from "@/lib/ai/actions";
 import { aiPrompts } from "@/lib/utils/ai-prompts";
 import { MediaPreview } from "../ui/MediaPreview";
+import { Concept } from "@/lib/db/models";
 
 interface AIGeneratorProps {
     isOpen: boolean;
     onClose: () => void;
     onGenerated: (data: { question: string; solution: string; newConcepts?: { title: string; content: string }[] }) => void;
     initialContent?: string;
+    relatedConcepts?: Concept[];
 }
 
-export function AIGenerator({ isOpen, onClose, onGenerated, initialContent = "" }: AIGeneratorProps) {
+export function AIGenerator({ isOpen, onClose, onGenerated, initialContent = "", relatedConcepts = [] }: AIGeneratorProps) {
     const [sourceContent, setSourceContent] = useState(initialContent);
     const [file, setFile] = useState<{ name: string; type: string; data: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -98,7 +100,7 @@ export function AIGenerator({ isOpen, onClose, onGenerated, initialContent = "" 
         setError(null);
 
         try {
-            const prompt = aiPrompts.generateFromRawContent(sourceContent);
+            const prompt = aiPrompts.generateFromRawContent(sourceContent, relatedConcepts);
             const data = await generateProblemFromContent(
                 prompt, 
                 file ? { mimeType: file.type, data: file.data } : undefined

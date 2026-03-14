@@ -501,6 +501,7 @@ export default function KnowledgeBase() {
                 onClose={() => setIsAIGeneratorOpen(false)}
                 onGenerated={handleAIGenerated}
                 initialContent={aiModal.type === "concept" ? `Primary Concept: ${aiModal.data?.title}\n\nContent: ${aiModal.data?.content}` : ""}
+                relatedConcepts={aiModal.type === "concept" && aiModal.data ? concepts.filter(c => c.topicIds.some(tid => (aiModal.data as Concept).topicIds.includes(tid))) : []}
             />
 
             {aiModal.type === "topic" && (

@@ -127,16 +127,21 @@ Review any attached media (screenshots, diagrams, textbook pages) closely to ext
 `;
   },
 
-  generateFromRawContent: (content: string) => {
+  generateFromRawContent: (content: string, existingConcepts: Concept[] = []) => {
+    const list = existingConcepts.map(c => `- ${c.title}: ${c.content} (ID: ${c.id})`).join("\n");
     return `
 ${BASE_INSTRUCTIONS}
 
 TASK: Based on the content below (and any attached images/files), generate a high-quality study problem.
 
+AVAILABLE CONCEPTS (for hints):
+${list || "(No existing concepts provided)"}
+
 CONTENT:
 ${content || "No text provided (analyze the attached media)."}
 
-Review any attached media closely to extract context, math formulas, or diagrams for the problem.
+Review any attached media closely to extract context, math formulas, or diagrams for the problem. 
+If an existing concept fits as a hint, include its ID in "existingConceptIds".
 `;
   }
 };
