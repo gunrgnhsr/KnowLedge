@@ -13,6 +13,9 @@ import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { ConceptPopup } from "@/components/knowledge/ConceptPopup";
 import { TikZ } from "@/components/ui/TikZ";
 import { cn } from "@/lib/utils";
+import { SolutionCapture } from "@/components/ui/SolutionCapture";
+import { checkSolutionWithAI } from "@/lib/ai/actions";
+import { AlertCircle, Loader2, Sparkles as SparklesIcon } from "lucide-react";
 
 function ExamContent() {
     const searchParams = useSearchParams();
@@ -35,6 +38,11 @@ function ExamContent() {
     const [showHint, setShowHint] = useState(false);
     const [activeConcept, setActiveConcept] = useState<Concept | null>(null);
     const [loading, setLoading] = useState(true);
+
+    // AI State
+    const [isAICheckOpen, setIsAICheckOpen] = useState(false);
+    const [isCheckingAI, setIsCheckingAI] = useState(false);
+    const [aiError, setAiError] = useState<string | null>(null);
 
     useEffect(() => {
         async function buildQueue() {
@@ -122,6 +130,33 @@ function ExamContent() {
     const resetSessionState = () => {
         setShowAnswer(false);
         setShowHint(false);
+        setIsAICheckOpen(false);
+        setAiError(null);
+    };
+
+    const handleAICheck = async (content: string, media?: { mimeType: string; data: string }) => {
+        if (!currentItem || currentItem.type !== 'problem') return;
+        
+        setIsCheckingAI(true);
+        setAiError(null);
+        try {
+            const result = await checkSolutionWithAI(
+                { question: currentItem.question, expectedSolution: currentItem.solution },
+                content,
+                media
+            );
+            
+            // Auto-reveal solution if AI says it's correct
+            if (result.isCorrect === "Correct") {
+                setShowAnswer(true);
+            }
+            return result;
+        } catch (err) {
+            setAiError("AI service is currently unavailable. Please try again later.");
+            throw err;
+        } finally {
+            setIsCheckingAI(false);
+        }
     };
 
     const handleNavigate = (direction: 'prev' | 'next') => {
@@ -216,7 +251,7 @@ function ExamContent() {
                     </div>
                 </div>
 
-                <div className="flex-1 flex flex-col space-y-6 overflow-hidden">
+                <div className="flex-1 flex flex-col space-y-6 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted">
                     <Card className="flex-1 overflow-hidden flex flex-col border-border/40 shadow-xl shadow-black/5 bg-card">
                         <div className="bg-muted/30 px-6 py-4 border-b border-border/40 flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -308,16 +343,49 @@ function ExamContent() {
                     </Card>
 
                     {/* Controls */}
-                    <div className="h-28 flex items-center justify-center shrink-0">
+                    <div className="min-h-[7rem] flex flex-col items-center justify-start shrink-0 py-4">
                         {!showAnswer ? (
-                            <Button
-                                size="lg"
-                                className="w-full max-w-md rounded-2xl h-16 text-xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all group"
-                                onClick={() => setShowAnswer(true)}
-                            >
-                                <Brain className="w-6 h-6 mr-3 transition-transform group-hover:scale-110" />
-                                Reveal Solution
-                            </Button>
+                                <div className="flex flex-col gap-4 w-full max-w-md animate-in fade-in duration-300">
+                                    <Button
+                                        size="lg"
+                                        className="w-full rounded-2xl h-16 text-xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all group"
+                                        onClick={() => setShowAnswer(true)}
+                                    >
+                                        <Brain className="w-6 h-6 mr-3 transition-transform group-hover:scale-110" />
+                                        Reveal Solution
+                                    </Button>
+                                    
+                                    {currentItem.type === "problem" && (
+                                        <div className="space-y-4">
+                                            <Button
+                                                variant="outline"
+                                                size="lg"
+                                                className="w-full rounded-2xl h-14 text-lg font-bold border-2 border-primary/20 hover:border-primary/40 transition-all group overflow-hidden relative"
+                                                onClick={() => setIsAICheckOpen(!isAICheckOpen)}
+                                            >
+                                                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                                                <SparklesIcon className="w-5 h-5 mr-3 text-primary animate-pulse" />
+                                                {isAICheckOpen ? "Cancel AI Check" : "Check with AI Tutor"}
+                                            </Button>
+
+                                            {isAICheckOpen && (
+                                                <div className="animate-in slide-in-from-top-4 duration-300">
+                                                    <SolutionCapture
+                                                        onCheck={handleAICheck}
+                                                        isChecking={isCheckingAI}
+                                                    />
+                                                    
+                                                    {aiError && (
+                                                        <div className="mt-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium flex items-center gap-3">
+                                                            <AlertCircle className="w-5 h-5 shrink-0" />
+                                                            {aiError}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                         ) : (
                             <div className="grid grid-cols-4 gap-3 w-full animate-in zoom-in-95 duration-300">
                                 <Button
