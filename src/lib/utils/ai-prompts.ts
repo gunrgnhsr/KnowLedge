@@ -13,7 +13,7 @@ Follow these rules strictly:
    - Use provided "Existing Concepts" (Title and Content/Formula) as much as possible.
    - Link them by ID in "existingConceptIds" if they are critical to the solution.
    - If you need a concept that is NOT in the list, provide its "title" and "content" in "newConcepts".
-4. DIAGRAMS: Use TikZ for diagrams. Surround with standard \\\\begin{tikzpicture} and \\\\end{tikzpicture} tags.
+4. DIAGRAMS: If the source material (text or media) contains a diagram, geometric figure, or plot essential to the problem, RECREATE it using TikZ. Surround with standard \\\\begin{tikzpicture} and \\\\end{tikzpicture} tags.
 5. Output ONLY a single valid JSON object.
 
 Expected JSON format:
@@ -107,7 +107,7 @@ TASK:
 FORMATTING RULES:
 - LaTeX MATH: Use LaTeX for ALL math. Use double-escaped backslashes for JSON (e.g., "$\\\\frac{1}{2}$").
 - NEW LINES: Use "\\n" for all line breaks within your JSON string values. NEVER use literal multi-line strings.
-- TikZ DIAGRAMS: If a concept benefit from a visual, include a TikZ block using standard \\\\begin{tikzpicture} and \\\\end{tikzpicture} tags.
+- TikZ DIAGRAMS: If the source material contains diagrams or visual explanations, you MUST RECREATE them using TikZ code within the concept content. Use standard \\\\begin{tikzpicture} and \\\\end{tikzpicture} tags.
 - NO CITATIONS: Do NOT include page numbers, source names, or "From the text..." mentions. Just provide the raw educational content.
 - RICH TEXT: Use **bold** for key terms. Use bullet points for lists.
 
@@ -139,6 +139,9 @@ ${list || "(No existing concepts provided)"}
 
 CONTENT:
 ${content || "No text provided (analyze the attached media)."}
+
+DIAGRAM EXTRACTION:
+If the attached media contains any visual diagrams, plots, or geometry, you MUST transcribe and RECREATE them using TikZ code in the JSON fields. Do not skip visual information.
 
 Review any attached media closely to extract context, math formulas, or diagrams for the problem. 
 If an existing concept fits as a hint, include its ID in "existingConceptIds".
