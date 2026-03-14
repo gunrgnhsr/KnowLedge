@@ -32,6 +32,7 @@ import { AdaptPromptModal } from "@/components/ai/AdaptPromptModal";
 import { ConceptPopup } from "@/components/knowledge/ConceptPopup";
 import { ExamSettingsModal, ExamSettings } from "@/components/exam/ExamSettingsModal";
 import { AIChoiceModal } from "@/components/ai/AIChoiceModal";
+import { AIGenerator } from "@/components/ai/AIGenerator";
 import { generateProblemFromContent } from "@/lib/ai/actions";
 
 export default function TopicsPage() {
@@ -75,6 +76,7 @@ export default function TopicsPage() {
         data: null
     });
     const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
 
     const loadData = async () => {
         setLoading(true);
@@ -146,7 +148,7 @@ export default function TopicsPage() {
         setAiModal({ open: true, type: "topic", data: topic });
     };
 
-    const handleAIChoiceInApp = async () => {
+    const handleAIChoiceDirect = async () => {
         if (!aiModal.data) return;
         setIsGeneratingAI(true);
         try {
@@ -155,17 +157,28 @@ export default function TopicsPage() {
             const prompt = aiPrompts.generateFromTopic(topic, topicConcepts);
 
             const data = await generateProblemFromContent(prompt);
-            const enrichedData = {
-                ...data,
-                sourceTopicIds: [topic.id],
-            };
-            sessionStorage.setItem("ai_import_data", JSON.stringify(enrichedData));
-            router.push("/problems/new?import=ai");
+            handleAIGenerated(data);
         } catch (err) {
             console.error("AI Generation Failed:", err);
         } finally {
             setIsGeneratingAI(false);
+            setAiModal({ ...aiModal, open: false });
         }
+    };
+
+    const handleAIChoiceWithSource = () => {
+        setIsAIGeneratorOpen(true);
+        setAiModal({ ...aiModal, open: false });
+    };
+
+    const handleAIGenerated = (data: { question: string; solution: string; newConcepts?: { title: string; content: string }[] }) => {
+        const topic = aiModal.data as Topic;
+        const enrichedData = {
+            ...data,
+            sourceTopicIds: [topic.id],
+        };
+        sessionStorage.setItem("ai_import_data", JSON.stringify(enrichedData));
+        router.push("/problems/new?import=ai");
     };
 
     const handleAIChoiceCopyPrompt = () => {
@@ -390,9 +403,17 @@ export default function TopicsPage() {
                 onClose={() => setAiModal({ ...aiModal, open: false })}
                 title={`Generate from "${aiModal.data?.name}"`}
                 description="Create study problems using all concepts in this topic."
-                onGenerateInApp={handleAIChoiceInApp}
+                onGenerateDirect={handleAIChoiceDirect}
+                onGenerateWithSource={handleAIChoiceWithSource}
                 onCopyPrompt={handleAIChoiceCopyPrompt}
                 isGenerating={isGeneratingAI}
+            />
+
+            <AIGenerator 
+                isOpen={isAIGeneratorOpen}
+                onClose={() => setIsAIGeneratorOpen(false)}
+                onGenerated={handleAIGenerated}
+                initialContent={aiModal.data ? `Topic: ${aiModal.data.name}` : ""}
             />
         </div>
     );

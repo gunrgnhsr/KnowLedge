@@ -11,10 +11,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Check, X, HelpCircle, Brain, Lightbulb, BookOpen, Zap, PlusCircle, Search, ChevronLeft, ChevronRight, Edit } from "lucide-react";
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { ConceptPopup } from "@/components/knowledge/ConceptPopup";
+import { AIGenerator } from "@/components/ai/AIGenerator";
 import { cn } from "@/lib/utils";
 import { AIChoiceModal } from "@/components/ai/AIChoiceModal";
-import { generateProblemFromContent } from "@/lib/ai/actions";
+import { generateProblemFromContent, checkSolutionWithAI } from "@/lib/ai/actions";
 import { aiPrompts } from "@/lib/utils/ai-prompts";
+import { SolutionCapture } from "@/components/ui/SolutionCapture";
 import {
     Dialog,
     DialogContent,
@@ -40,6 +42,9 @@ export default function ReviewSession() {
     const [loading, setLoading] = useState(true);
     const [aiModal, setAiModal] = useState<{ open: boolean; data: Concept | null }>({ open: false, data: null });
     const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
+    const [isAiMode, setIsAiMode] = useState(false);
+    const [isCheckingWithAI, setIsCheckingWithAI] = useState(false);
 
     useEffect(() => {
         async function initSession() {
@@ -73,38 +78,44 @@ export default function ReviewSession() {
         initSession();
     }, []);
 
-    // Unified AI Flow: Generate first, then redirect
-    const handleAIChoiceInApp = async () => {
+    const handleAIChoiceDirect = async () => {
         if (!aiModal.data || !currentItem) return;
         setIsGeneratingAI(true);
         try {
             const concept = aiModal.data;
-            const relatedConcepts = allProblems.filter(p => p.hints.includes(concept.id)); // Using allProblems to find related if needed, or just filter from all items if available
-            // Note: Review session might not have all concepts loaded, but we have concepts in allProblems context or we can fetch.
-            // For now, let's use what we have.
             const prompt = aiPrompts.generateFromConcept(concept, []);
 
             const data = await generateProblemFromContent(prompt);
-            const enrichedData = {
-                ...data,
-                sourceTopicIds: concept.topicIds,
-                sourceConceptId: concept.id
-            };
-            
-            // Save review session to resume later
-            sessionStorage.setItem("review_session", JSON.stringify({
-                queue,
-                currentIndex
-            }));
-
-            sessionStorage.setItem("ai_import_data", JSON.stringify(enrichedData));
-            router.push("/problems/new?import=ai&returnTo=/review");
+            handleAIGenerated(data);
         } catch (err) {
             console.error("AI Generation Failed:", err);
         } finally {
             setIsGeneratingAI(false);
             setAiModal({ open: false, data: null });
         }
+    };
+
+    const handleAIChoiceWithSource = () => {
+        setIsAIGeneratorOpen(true);
+        setAiModal({ ...aiModal, open: false });
+    };
+
+    const handleAIGenerated = (data: { question: string; solution: string; newConcepts?: { title: string; content: string }[] }) => {
+        const concept = aiModal.data || currentItem as Concept;
+        const enrichedData = {
+            ...data,
+            sourceTopicIds: concept.topicIds,
+            sourceConceptId: concept.id
+        };
+        
+        // Save review session to resume later
+        sessionStorage.setItem("review_session", JSON.stringify({
+            queue,
+            currentIndex
+        }));
+
+        sessionStorage.setItem("ai_import_data", JSON.stringify(enrichedData));
+        router.push("/problems/new?import=ai&returnTo=/review");
     };
 
     const handleAIChoiceCopyPrompt = () => {
@@ -146,6 +157,7 @@ export default function ReviewSession() {
         setPracticeUI('none');
         setPracticeProblem(null);
         setShowPracticeAnswer(false);
+        setIsAiMode(false);
     };
 
     const handleNavigate = (direction: 'prev' | 'next') => {
@@ -181,6 +193,22 @@ export default function ReviewSession() {
         setPracticeProblem(picked);
         setPracticeUI('solving');
         setShowPracticeAnswer(false);
+        setIsAiMode(false);
+    };
+
+    const handleAICheck = async (text: string, media?: { mimeType: string; data: string }) => {
+        if (!practiceProblem) return;
+        setIsCheckingWithAI(true);
+        try {
+            const result = await checkSolutionWithAI(
+                { question: practiceProblem.question, expectedSolution: practiceProblem.solution },
+                text,
+                media
+            );
+            return result;
+        } finally {
+            setIsCheckingWithAI(false);
+        }
     };
 
     if (loading) {
@@ -326,6 +354,15 @@ export default function ReviewSession() {
                                         </div>
                                     </div>
                                 )}
+
+                                {isAiMode && !showPracticeAnswer && (
+                                    <div className="mt-8 pt-8 border-t border-border/40 animate-in zoom-in-95 duration-300">
+                                        <SolutionCapture 
+                                            onCheck={handleAICheck} 
+                                            isChecking={isCheckingWithAI} 
+                                        />
+                                    </div>
+                                )}
                             </div>
                         ) : practiceUI === 'selecting' ? (
                             <div className="h-full flex flex-col items-center justify-center text-center space-y-8 animate-in zoom-in-95 duration-300">
@@ -416,14 +453,31 @@ export default function ReviewSession() {
                 <div className="h-24 flex items-center justify-center shrink-0">
                     {practiceUI === 'solving' ? (
                         !showPracticeAnswer ? (
-                            <Button
-                                size="lg"
-                                className="w-full max-w-sm rounded-full h-14 text-lg shadow-lg"
-                                onClick={() => setShowPracticeAnswer(true)}
-                            >
-                                <Search className="w-5 h-5 mr-2" />
-                                Reveal Solution
-                            </Button>
+                            <div className="flex flex-col sm:flex-row gap-3 w-full max-w-lg">
+                                <Button
+                                    variant="outline"
+                                    size="lg"
+                                    className={cn(
+                                        "flex-1 rounded-full h-14 text-lg border-2 transition-all gap-2",
+                                        isAiMode ? "border-primary bg-primary/5 text-primary" : "border-border"
+                                    )}
+                                    onClick={() => setIsAiMode(!isAiMode)}
+                                >
+                                    <Sparkles className={cn("w-5 h-5", isAiMode && "fill-current")} />
+                                    {isAiMode ? "Hide AI Checker" : "Check with AI"}
+                                </Button>
+                                <Button
+                                    size="lg"
+                                    className="flex-1 rounded-full h-14 text-lg shadow-lg"
+                                    onClick={() => {
+                                        setShowPracticeAnswer(true);
+                                        setIsAiMode(false);
+                                    }}
+                                >
+                                    <Search className="w-5 h-5 mr-2" />
+                                    Reveal Solution
+                                </Button>
+                            </div>
                         ) : (
                                 <div className="grid grid-cols-4 gap-2 w-full animate-in zoom-in-95">
                                     <Button
@@ -516,9 +570,17 @@ export default function ReviewSession() {
                 onClose={() => setAiModal({ open: false, data: null })}
                 title={`Generate Problem for ${aiModal.data?.title}`}
                 description="Gemini 3.1 will create a professional study problem based on this concept's content."
-                onGenerateInApp={handleAIChoiceInApp}
+                onGenerateDirect={handleAIChoiceDirect}
+                onGenerateWithSource={handleAIChoiceWithSource}
                 onCopyPrompt={handleAIChoiceCopyPrompt}
                 isGenerating={isGeneratingAI}
+            />
+
+            <AIGenerator 
+                isOpen={isAIGeneratorOpen}
+                onClose={() => setIsAIGeneratorOpen(false)}
+                onGenerated={handleAIGenerated}
+                initialContent={aiModal.data ? `Primary Concept: ${aiModal.data.title}\n\nContent: ${aiModal.data.content}` : ""}
             />
         </div>
     );

@@ -12,6 +12,9 @@ import { ArrowLeft, Check, X, Brain, Lightbulb, BookOpen, Loader2 } from "lucide
 import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { ConceptPopup } from "@/components/knowledge/ConceptPopup";
 import { cn } from "@/lib/utils";
+import { checkSolutionWithAI } from "@/lib/ai/actions";
+import { SolutionCapture } from "@/components/ui/SolutionCapture";
+import { Sparkles } from "lucide-react";
 
 export default function SolveProblem() {
     const router = useRouter();
@@ -25,6 +28,8 @@ export default function SolveProblem() {
     const [showHint, setShowHint] = useState(false);
     const [activeConcept, setActiveConcept] = useState<Concept | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isAiMode, setIsAiMode] = useState(false);
+    const [isCheckingWithAI, setIsCheckingWithAI] = useState(false);
 
     useEffect(() => {
         async function loadData() {
@@ -57,6 +62,21 @@ export default function SolveProblem() {
         if (!problem) return;
         await api.items.reviewItem(problem.id, grade);
         router.push("/problems");
+    };
+
+    const handleAICheck = async (text: string, media?: { mimeType: string; data: string }) => {
+        if (!problem) return;
+        setIsCheckingWithAI(true);
+        try {
+            const result = await checkSolutionWithAI(
+                { question: problem.question, expectedSolution: problem.solution },
+                text,
+                media
+            );
+            return result;
+        } finally {
+            setIsCheckingWithAI(false);
+        }
     };
 
     if (loading) {
@@ -166,19 +186,45 @@ export default function SolveProblem() {
                                 </div>
                             </div>
                         )}
+
+                        {isAiMode && !showAnswer && (
+                            <div className="mt-8 pt-8 border-t border-border animate-in zoom-in-95 duration-300">
+                                <SolutionCapture 
+                                    onCheck={handleAICheck} 
+                                    isChecking={isCheckingWithAI} 
+                                />
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 
                 <div className="h-24 flex items-center justify-center shrink-0 pb-8">
                     {!showAnswer ? (
-                        <Button
-                            size="lg"
-                            className="w-full max-w-sm rounded-full h-14 text-lg shadow-lg hover:scale-105 transition-transform"
-                            onClick={() => setShowAnswer(true)}
-                        >
-                            <Brain className="w-5 h-5 mr-2" />
-                            Reveal Solution
-                        </Button>
+                        <div className="flex flex-col sm:flex-row gap-3 w-full max-w-lg">
+                             <Button
+                                variant="outline"
+                                size="lg"
+                                className={cn(
+                                    "flex-1 rounded-full h-14 text-lg border-2 transition-all gap-2",
+                                    isAiMode ? "border-primary bg-primary/5 text-primary" : "border-border"
+                                )}
+                                onClick={() => setIsAiMode(!isAiMode)}
+                            >
+                                <Sparkles className={cn("w-5 h-5", isAiMode && "fill-current")} />
+                                {isAiMode ? "Hide AI Checker" : "Check with AI"}
+                            </Button>
+                            <Button
+                                size="lg"
+                                className="flex-1 rounded-full h-14 text-lg shadow-lg hover:scale-105 transition-transform"
+                                onClick={() => {
+                                    setShowAnswer(true);
+                                    setIsAiMode(false);
+                                }}
+                            >
+                                <Brain className="w-5 h-5 mr-2" />
+                                Reveal Solution
+                            </Button>
+                        </div>
                     ) : (
                         <div className="grid grid-cols-4 gap-2 w-full animate-in zoom-in-95">
                             <Button

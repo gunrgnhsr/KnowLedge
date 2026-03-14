@@ -12,41 +12,43 @@ import {
 } from "../ui/dialog";
 import { Textarea } from "../ui/textarea";
 import { Brain, Sparkles, AlertCircle, Upload, X } from "lucide-react";
-import { generateProblemFromContent } from "@/lib/ai/actions";
+import { discoverConceptsFromContent } from "@/lib/ai/actions";
 import { aiPrompts } from "@/lib/utils/ai-prompts";
 import { MediaPreview } from "../ui/MediaPreview";
+import { Topic, Concept } from "@/lib/db/models";
 
-interface AIGeneratorProps {
+interface AIDiscoveryModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onGenerated: (data: { question: string; solution: string; newConcepts?: { title: string; content: string }[] }) => void;
-    initialContent?: string;
+    onDiscovered: (data: { concepts: { title: string; content: string }[] }) => void;
+    topic: Topic;
+    existingConcepts: Concept[];
 }
 
-export function AIGenerator({ isOpen, onClose, onGenerated, initialContent = "" }: AIGeneratorProps) {
-    const [sourceContent, setSourceContent] = useState(initialContent);
+export function AIDiscoveryModal({ isOpen, onClose, onDiscovered, topic, existingConcepts }: AIDiscoveryModalProps) {
+    const [sourceContent, setSourceContent] = useState("");
     const [file, setFile] = useState<{ name: string; type: string; data: string } | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (!isOpen) {
             setFile(null);
+            setSourceContent("");
+            setError(null);
             return;
-        }
-        if (initialContent) {
-            setSourceContent(initialContent);
         }
         
         const pasteListener = (e: ClipboardEvent) => handlePaste(e);
         window.addEventListener("paste", pasteListener);
         return () => window.removeEventListener("paste", pasteListener);
-    }, [isOpen, initialContent]);
+    }, [isOpen]);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // 10MB Limit
         if (file.size > 10 * 1024 * 1024) {
             setError("File is too large (max 10MB).");
             return;
@@ -88,27 +90,27 @@ export function AIGenerator({ isOpen, onClose, onGenerated, initialContent = "" 
         }
     };
 
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    const handleGenerate = async () => {
-        if (!sourceContent.trim() && !file) return;
+    const handleDiscover = async () => {
+        if (!sourceContent.trim() && !file) {
+            setError("Please provide some text or an attachment to analyze.");
+            return;
+        }
 
         setIsGenerating(true);
         setError(null);
 
         try {
-            const prompt = aiPrompts.generateFromRawContent(sourceContent);
-            const data = await generateProblemFromContent(
-                prompt, 
+            const prompt = aiPrompts.discoverConcepts(topic, existingConcepts) + 
+                           (sourceContent ? `\n\nEXTRA SOURCE TEXT:\n${sourceContent}` : "");
+            
+            const data = await discoverConceptsFromContent(
+                prompt,
                 file ? { mimeType: file.type, data: file.data } : undefined
             );
-            onGenerated(data);
-            setSourceContent("");
-            setFile(null);
+            onDiscovered(data);
             onClose();
         } catch (err: any) {
-            setError(err.message || "Failed to generate problem. Please check your API key.");
+            setError(err.message || "Failed to discover concepts.");
         } finally {
             setIsGenerating(false);
         }
@@ -120,12 +122,12 @@ export function AIGenerator({ isOpen, onClose, onGenerated, initialContent = "" 
                 <DialogHeader className="space-y-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-                            <Brain className="w-5 h-5" />
+                            <Sparkles className="w-5 h-5" />
                         </div>
-                        <h2 className="text-2xl font-black tracking-tight">Generate with Gemini 3.1</h2>
+                        <h2 className="text-2xl font-black tracking-tight">Discover in "{topic.name}"</h2>
                     </div>
                     <DialogDescription className="text-base text-muted-foreground font-medium">
-                        Paste text, upload a document, or **paste a screenshot** directly. AI will transform it into a study problem.
+                        Upload a syllabus, lecture notes, or **paste a screenshot** from your curriculum. Gemini will find what's missing.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -147,7 +149,7 @@ export function AIGenerator({ isOpen, onClose, onGenerated, initialContent = "" 
                             onPaste={handlePaste}
                         />
                         <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-100 transition-opacity text-primary pointer-events-none">
-                            <Sparkles className="w-6 h-6" />
+                            <Brain className="w-6 h-6" />
                         </div>
                     </div>
 
@@ -159,7 +161,7 @@ export function AIGenerator({ isOpen, onClose, onGenerated, initialContent = "" 
                             onClick={() => fileInputRef.current?.click()}
                         >
                             <Upload className="w-4 h-4" />
-                            Upload File / PDF
+                            Upload PDF / Image
                         </Button>
                         <p className="text-[10px] text-muted-foreground uppercase font-black self-center tracking-widest opacity-50">
                             Tip: You can paste screenshots (Ctrl+V) directly
@@ -184,19 +186,19 @@ export function AIGenerator({ isOpen, onClose, onGenerated, initialContent = "" 
                         Cancel
                     </Button>
                     <Button
-                        onClick={handleGenerate}
+                        onClick={handleDiscover}
                         disabled={(!sourceContent.trim() && !file) || isGenerating}
                         className="rounded-xl px-8 gap-3 bg-primary hover:bg-primary/95 text-primary-foreground font-bold shadow-lg shadow-primary/20"
                     >
                         {isGenerating ? (
                             <>
                                 <Sparkles className="w-4 h-4 animate-spin" />
-                                Analyzing Multi-Modal Content...
+                                Analyzing Sources...
                             </>
                         ) : (
                             <>
-                                Generate Problem
-                                <Brain className="w-4 h-4" />
+                                Discover Missing Concepts
+                                <Sparkles className="w-4 h-4" />
                             </>
                         )}
                     </Button>

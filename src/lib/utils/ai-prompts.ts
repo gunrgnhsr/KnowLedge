@@ -122,6 +122,8 @@ Return ONLY a valid JSON object:
 
 SOURCE DATA:
 [Analyze the attached files OR the pasted text below]
+
+Review any attached media (screenshots, diagrams, textbook pages) closely to extract educational content and define new concepts accurately.
 `;
   },
 
@@ -129,10 +131,12 @@ SOURCE DATA:
     return `
 ${BASE_INSTRUCTIONS}
 
-TASK: Based on the content below, generate a high-quality study problem.
+TASK: Based on the content below (and any attached images/files), generate a high-quality study problem.
 
 CONTENT:
-${content}
+${content || "No text provided (analyze the attached media)."}
+
+Review any attached media closely to extract context, math formulas, or diagrams for the problem.
 `;
   }
 };

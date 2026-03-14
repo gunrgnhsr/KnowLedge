@@ -25,7 +25,7 @@ export function Navigation() {
     const pathname = usePathname();
 
     return (
-        <nav className="fixed bottom-0 left-0 z-50 w-full border-t border-border bg-background/80 backdrop-blur-lg md:relative md:top-0 md:h-screen md:w-64 md:border-t-0 md:border-r">
+        <nav className="fixed bottom-0 left-0 z-50 w-full border-t border-border bg-background/80 backdrop-blur-lg md:relative md:top-0 md:h-full md:w-64 md:border-t-0 md:border-r">
             <div className="flex flex-row items-center justify-around h-16 md:flex-col md:h-full md:justify-start md:gap-4 md:p-6">
                 <div className="hidden md:flex flex-col gap-6 mb-4 px-2 w-full">
                     <Link href="/dashboard" className="flex items-center gap-2">

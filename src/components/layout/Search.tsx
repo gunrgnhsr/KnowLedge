@@ -72,13 +72,13 @@ export function GlobalSearch() {
     if (!isOpen) return (
         <button
             onClick={() => setIsOpen(true)}
-            className="flex items-center gap-2 p-2 px-3 py-1.5 text-sm text-muted-foreground bg-muted/50 hover:bg-muted rounded-md transition-colors border border-transparent hover:border-border w-10 h-10 md:w-64 md:h-auto overflow-hidden group justify-center md:justify-start"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground bg-muted/40 hover:bg-muted/60 rounded-xl transition-all border border-border/50 hover:border-primary/30 w-10 h-10 md:w-full md:h-auto overflow-hidden group justify-center md:justify-start shadow-sm"
             title="Search (⌘K)"
         >
             <SearchIcon className="w-5 h-5 md:w-4 md:h-4 shrink-0 transition-colors group-hover:text-primary" />
-            <span className="hidden md:inline">Search...</span>
-            <kbd className="hidden md:ml-auto md:pointer-events-none md:inline-flex md:h-5 md:select-none md:items-center md:gap-1 md:rounded md:border md:bg-muted md:px-1.5 md:font-mono md:text-[10px] md:font-medium md:opacity-100">
-                <span className="text-xs">⌘</span>K
+            <span className="hidden md:inline font-medium">Search...</span>
+            <kbd className="hidden md:ml-auto md:pointer-events-none md:inline-flex md:h-5 md:select-none md:items-center md:gap-1 md:rounded md:border md:bg-background md:px-1.5 md:font-mono md:text-[10px] md:font-medium md:opacity-100 shadow-sm border-border/60">
+                <span className="text-[10px]">⌘</span>K
             </kbd>
         </button>
     );

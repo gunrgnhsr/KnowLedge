@@ -21,10 +21,10 @@ export default function RootLayout({
       <head>
         <link rel="stylesheet" href="https://tikzjax.com/v1/fonts.css" />
       </head>
-      <body className={`${inter.className} min-h-screen bg-background antialiased text-foreground`} suppressHydrationWarning>
-        <div className="flex flex-col md:flex-row min-h-screen">
+      <body className={`${inter.className} h-screen bg-background antialiased text-foreground overflow-hidden`} suppressHydrationWarning>
+        <div className="flex flex-col md:flex-row h-full w-full overflow-hidden">
           <Navigation />
-          <main className="flex-1 pb-20 md:pb-0 overflow-y-auto">
+          <main className="flex-1 pb-20 md:pb-0 overflow-y-auto h-full w-full">
             {children}
           </main>
         </div>

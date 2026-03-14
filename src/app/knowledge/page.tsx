@@ -11,6 +11,8 @@ import { MarkdownRenderer } from "@/components/ui/MarkdownRenderer";
 import { Pencil, Trash2, Filter, X, Wand2, Check as CheckIcon, Play, Sparkles, FileJson } from "lucide-react";
 import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
 import { AIConceptImportModal } from "@/components/ai/AIConceptImportModal";
+import { AIGenerator } from "@/components/ai/AIGenerator";
+import { AIDiscoveryModal } from "@/components/ai/AIDiscoveryModal";
 import { aiPrompts } from "@/lib/utils/ai-prompts";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -51,6 +53,8 @@ export default function KnowledgeBase() {
         data: null
     });
     const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const [isAIGeneratorOpen, setIsAIGeneratorOpen] = useState(false);
+    const [isAIDiscoveryOpen, setIsAIDiscoveryOpen] = useState(false);
 
     const [page, setPage] = useState(0);
     const [hasMore, setHasMore] = useState(true);
@@ -144,7 +148,18 @@ export default function KnowledgeBase() {
         setAiModal({ open: true, type: "topic", data: topic });
     };
 
-    const handleAIChoiceInApp = async () => {
+    const handleAIChoiceWithSource = async () => {
+        if (!aiModal.data) return;
+        
+        if (aiModal.type === "concept") {
+            setIsAIGeneratorOpen(true);
+        } else {
+            setIsAIDiscoveryOpen(true);
+        }
+        setAiModal({ ...aiModal, open: false });
+    };
+
+    const handleAIChoiceDirect = async () => {
         if (!aiModal.data) return;
         setIsGeneratingAI(true);
         try {
@@ -157,32 +172,37 @@ export default function KnowledgeBase() {
                 const prompt = aiPrompts.generateFromConcept(concept, relatedConcepts);
 
                 const data = await generateProblemFromContent(prompt);
-                const enrichedData = {
-                    ...data,
-                    sourceTopicIds: concept.topicIds,
-                    sourceConceptId: concept.id
-                };
-                sessionStorage.setItem("ai_import_data", JSON.stringify(enrichedData));
-                router.push("/problems/new?import=ai");
+                handleAIGenerated(data);
             } else {
                 const topic = aiModal.data as Topic;
                 const topicConcepts = concepts.filter(c => c.topicIds.includes(topic.id));
                 const prompt = aiPrompts.discoverConcepts(topic, topicConcepts);
 
                 const data = await discoverConceptsFromContent(prompt);
-                // For discovery, we might want a different redirect or a specific modal
-                // For now, let's just stick to what the user expects for "problems" if that's the primary use case,
-                // but discovery returns { concepts: [...] }.
-                // If it's discovery, we should probably stay on the page and open the import modal.
-                sessionStorage.setItem("ai_import_concepts", JSON.stringify(data.concepts));
-                setImportModalOpen(true);
-                setAiModal({ ...aiModal, open: false });
+                handleAIDiscovered(data);
             }
         } catch (err) {
             console.error("AI Generation Failed:", err);
         } finally {
             setIsGeneratingAI(false);
+            setAiModal({ ...aiModal, open: false });
         }
+    };
+
+    const handleAIGenerated = (data: { question: string; solution: string; newConcepts?: { title: string; content: string }[] }) => {
+        const concept = aiModal.data as Concept;
+        const enrichedData = {
+            ...data,
+            sourceTopicIds: concept.topicIds,
+            sourceConceptId: concept.id
+        };
+        sessionStorage.setItem("ai_import_data", JSON.stringify(enrichedData));
+        router.push("/problems/new?import=ai");
+    };
+
+    const handleAIDiscovered = (data: { concepts: { title: string; content: string }[] }) => {
+        sessionStorage.setItem("ai_import_concepts", JSON.stringify(data.concepts));
+        setImportModalOpen(true);
     };
 
     const handleAIChoiceCopyPrompt = () => {
@@ -463,7 +483,8 @@ export default function KnowledgeBase() {
                 onClose={() => setAiModal({ ...aiModal, open: false })}
                 title={aiModal.type === "concept" ? `Generate from "${aiModal.data?.title}"` : `Explore "${aiModal.data?.name}"`}
                 description={aiModal.type === "concept" ? "Create a study problem based on this concept's definition." : "Discover missing concepts or create problems for this topic."}
-                onGenerateInApp={handleAIChoiceInApp}
+                onGenerateDirect={handleAIChoiceDirect}
+                onGenerateWithSource={handleAIChoiceWithSource}
                 onCopyPrompt={handleAIChoiceCopyPrompt}
                 isGenerating={isGeneratingAI}
             />
@@ -474,6 +495,23 @@ export default function KnowledgeBase() {
                 topic={topics.find(t => t.id === selectedTopicId) || null}
                 onSuccess={loadData}
             />
+
+            <AIGenerator 
+                isOpen={isAIGeneratorOpen}
+                onClose={() => setIsAIGeneratorOpen(false)}
+                onGenerated={handleAIGenerated}
+                initialContent={aiModal.type === "concept" ? `Primary Concept: ${aiModal.data?.title}\n\nContent: ${aiModal.data?.content}` : ""}
+            />
+
+            {aiModal.type === "topic" && (
+                <AIDiscoveryModal 
+                    isOpen={isAIDiscoveryOpen}
+                    onClose={() => setIsAIDiscoveryOpen(false)}
+                    onDiscovered={handleAIDiscovered}
+                    topic={aiModal.data as Topic}
+                    existingConcepts={concepts.filter(c => (aiModal.data as Topic).id && c.topicIds.includes((aiModal.data as Topic).id))}
+                />
+            )}
 
             <BulkTopicEditModal
                 isOpen={bulkEditModalOpen}
